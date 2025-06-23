@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';">
+    <title>LoL Controller</title>
+    <link rel="stylesheet" href="styles/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Client Mobile</h1>
+            <p>Aguardando conexão com o cliente do League of Legends...</p>
+        </header>
+
+        <main class="status-grid">
+            <div class="card">
+                <h2>Servidor Local</h2>
+                <div class="status-indicator" id="server-indicator"></div>
+                <p id="server-status-text">Parado</p>
+                <div class="info-box">
+                    <p>Endereço para o App:</p>
+                    <strong id="server-address">...</strong>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Cliente do LoL (LCU)</h2>
+                <div class="status-indicator" id="lcu-indicator"></div>
+                <p id="lcu-status-text">Desconectado</p>
+                 <div class="info-box">
+                    <p>Porta de Conexão:</p>
+                    <strong id="lcu-port">...</strong>
+                </div>
+            </div>
+        </main>
+        
+        <footer>
+            <p>Mantenha este app aberto enquanto joga. Configure o endereço do servidor no seu app móvel.</p>
+        </footer>
+    </div>
+
+    <script>
+        // Lógica para interagir com o backend do Electron
+        
+        const serverIndicator = document.getElementById('server-indicator');
+        const serverStatusText = document.getElementById('server-status-text');
+        const serverAddress = document.getElementById('server-address');
+
+        const lcuIndicator = document.getElementById('lcu-indicator');
+        const lcuStatusText = document.getElementById('lcu-status-text');
+        const lcuPort = document.getElementById('lcu-port');
+
+        // Recebe atualizações de status do servidor
+        window.api.onServerStatusUpdate((data) => {
+            if (data.status === 'running') {
+                serverIndicator.classList.add('online');
+                serverStatusText.textContent = 'Rodando';
+                serverAddress.textContent = `http://${data.ip}:${data.port}`;
+            } else {
+                serverIndicator.classList.remove('online');
+                serverStatusText.textContent = 'Parado';
+                serverAddress.textContent = '...';
+            }
+        });
+
+        // Recebe atualizações de status do LCU
+        window.api.onLcuStatusUpdate((data) => {
+             if (data.status === 'connected') {
+                lcuIndicator.classList.add('online');
+                lcuStatusText.textContent = 'Conectado';
+                lcuPort.textContent = data.port;
+            } else {
+                lcuIndicator.classList.remove('online');
+                lcuStatusText.textContent = 'Desconectado';
+                lcuPort.textContent = '...';
+            }
+        });
+    </script>
+</body>
+</html>

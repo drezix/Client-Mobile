@@ -1,0 +1,23 @@
+{
+  "name": "client-mobile",
+  "version": "1.0.0",
+  "description": "Mobile client to control league actions from your cellphone",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "nodemon --exec electron .",
+    "test:lcu": "node test/lcu-integration.test.js"
+  },
+  "author": "André Agostinis",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.10.0",
+    "express": "^5.1.0",
+    "https-proxy-agent": "^7.0.6"
+  },
+  "devDependencies": {
+    "electron": "^36.5.0",
+    "electron-reloader": "^1.2.3",
+    "nodemon": "^3.1.10"
+  }
+}
