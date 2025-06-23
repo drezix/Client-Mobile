@@ -1,86 +1,115 @@
-// Serviço responsável por toda a lógica de interação com o League of Legends Client Update (LCU) API.
-
-const https = require('https'); // Corrigido para usar o módulo nativo https
-const axios = require('axios');
-const { exec } = require('child_process');
+const https = require('https');
+const axios =require('axios');
+const { getLeagueCredentials } = require('./lcuCredentials');
 
 let lcuData = null;
-let lcuWatcherInterval = null;
 let mainWindow = null;
-let hasConnectedOnce = false; 
 
-function getLeagueCredentials() {
-  return new Promise((resolve, reject) => {
-    const command = process.platform === 'win32'
-      ? 'wmic PROCESS WHERE "name=\'LeagueClientUx.exe\'" GET commandline'
-      : 'ps x -o args | grep "LeagueClientUx"';
+// Variáveis de estado para os monitores
+let lcuWatcherInterval = null;
+let queueWatcherInterval = null;
+let readyCheckWatcherInterval = null;
+let lastQueueState = null;
+let lastReadyCheckState = null;
 
-    exec(command, (error, stdout) => {
-      if (error || !stdout || !stdout.includes('--remoting-auth-token=')) {
-        return reject('Cliente do LoL não encontrado.');
-      }
-      
-      const tokenMatch = stdout.match(/--remoting-auth-token=([^ "]+)/);
-      const portMatch = stdout.match(/--app-port=([^ "]+)/);
-
-      if (!tokenMatch || !portMatch) return reject('Não foi possível extrair token ou porta.');
-      resolve({ token: tokenMatch[1], port: portMatch[1] });
-    });
-  });
+// Monitores individuais
+function startQueueWatcher() {
+    if (queueWatcherInterval) return;
+    console.log('Monitor de Fila iniciado.');
+    queueWatcherInterval = setInterval(async () => {
+        if (!lcuData?.connected) return;
+        try {
+            const response = await makeLcuRequest('get', '/lol-lobby/v2/lobby/matchmaking/search-state');
+            const { searchState } = response;
+            
+            if (searchState !== lastQueueState) {
+                console.log(`[Queue Watcher] Estado da fila mudou: ${lastQueueState} -> ${searchState}`);
+                lastQueueState = searchState;
+                if (mainWindow) mainWindow.webContents.send('lcu-queue-status-update', { searchState });
+            }
+        } catch (error) {
+            if (lastQueueState !== 'Invalid') {
+                console.log('[Queue Watcher] Fila tornou-se inválida (provavelmente saiu do lobby).');
+                lastQueueState = 'Invalid';
+                if (mainWindow) mainWindow.webContents.send('lcu-queue-status-update', { searchState: 'Invalid' });
+            }
+        }
+    }, 1500);
 }
 
-async function watchLcu(win, onFirstConnect) {
+function stopQueueWatcher() {
+    if (queueWatcherInterval) {
+        clearInterval(queueWatcherInterval);
+        queueWatcherInterval = null;
+        console.log('Monitor de Fila parado.');
+    }
+}
+
+function startReadyCheckWatcher() {
+    if (readyCheckWatcherInterval) return;
+    console.log('Monitor de Ready Check iniciado.');
+    readyCheckWatcherInterval = setInterval(async () => {
+        if (!lcuData?.connected) return;
+        try {
+            const response = await makeLcuRequest('get', '/lol-matchmaking/v1/ready-check');
+            const { state, timer } = response;
+            if (state !== lastReadyCheckState || state === 'InProgress') {
+                lastReadyCheckState = state;
+                if (mainWindow) mainWindow.webContents.send('lcu-ready-check-update', { state, timer });
+            }
+        } catch (error) {
+            if (lastReadyCheckState !== 'Invalid') {
+                lastReadyCheckState = 'Invalid';
+                if (mainWindow) mainWindow.webContents.send('lcu-ready-check-update', { state: 'Invalid', timer: 0 });
+            }
+        }
+    }, 1000);
+}
+
+function stopReadyCheckWatcher() {
+    if (readyCheckWatcherInterval) {
+        clearInterval(readyCheckWatcherInterval);
+        readyCheckWatcherInterval = null;
+        console.log('Monitor de Ready Check parado.');
+    }
+}
+
+// Monitor principal do LCU
+async function watchLcu(win) {
     mainWindow = win;
     console.log('Iniciando monitoramento do LCU...');
     
     lcuWatcherInterval = setInterval(async () => {
         try {
             const credentials = await getLeagueCredentials();
-            const newData = {
-                port: credentials.port,
-                encodedToken: Buffer.from(`riot:${credentials.token}`).toString('base64'),
-                connected: true,
-            };
-
-            if (JSON.stringify(lcuData) !== JSON.stringify(newData)) {
-                lcuData = newData;
+            if (!lcuData || !lcuData.connected) {
+                lcuData = { 
+                    port: credentials.port,
+                    encodedToken: Buffer.from(`riot:${credentials.token}`).toString('base64'),
+                    connected: true 
+                };
                 console.log(`LCU Conectado na porta: ${lcuData.port}`);
-                mainWindow.webContents.send('lcu-status-update', { status: 'connected', port: lcuData.port });
-
-                if (!hasConnectedOnce && typeof onFirstConnect === 'function') {
-                    hasConnectedOnce = true;
-                    onFirstConnect(); 
-                }
+                if (mainWindow) mainWindow.webContents.send('lcu-status-update', { status: 'connected' });
+                startQueueWatcher();
+                startReadyCheckWatcher();
             }
         } catch (error) {
-            // AQUI ESTÁ A MUDANÇA MAIS IMPORTANTE
-            // Se o estado anterior era nulo (nunca conectou), mostramos o erro de busca.
-            if (lcuData === null) {
-                // Imprime a mensagem de erro do 'reject' da função getLeagueCredentials
-                console.error(`Erro ao procurar LCU: ${error}`);
-            }
-            
             if (lcuData && lcuData.connected) {
-                console.log('LCU Desconectado.');
-                lcuData = { connected: false };
-                hasConnectedOnce = false; 
-                // Apenas tenta enviar a mensagem para a janela se ela existir
-                if (mainWindow) {
-                    mainWindow.webContents.send('lcu-status-update', { status: 'disconnected' });
-                }
-            } else if (lcuData) {
-                // Se já estava desconectado, apenas reseta os dados sem logar de novo
                 lcuData.connected = false;
+                console.log('LCU Desconectado.');
+                if (mainWindow) mainWindow.webContents.send('lcu-status-update', { status: 'disconnected' });
+                stopQueueWatcher();
+                stopReadyCheckWatcher();
             }
         }
     }, 2000); 
 }
 
 function stopLcuWatcher() {
-    if (lcuWatcherInterval) {
-        clearInterval(lcuWatcherInterval);
-        console.log('Monitoramento do LCU parado.');
-    }
+    if (lcuWatcherInterval) clearInterval(lcuWatcherInterval);
+    stopQueueWatcher();
+    stopReadyCheckWatcher();
+    console.log('Monitoramento do LCU parado.');
 }
 
 function getLcuData() {
@@ -106,9 +135,8 @@ async function makeLcuRequest(method, endpoint, body = null) {
         });
         return response.data;
     } catch (error) {
-        console.error(`Erro na requisição LCU para ${endpoint}:`, error.message);
         throw error;
     }
 }
 
-module.exports = { getLcuData, makeLcuRequest, watchLcu, stopLcuWatcher };
+module.exports = { makeLcuRequest, watchLcu, stopLcuWatcher, getLcuData };

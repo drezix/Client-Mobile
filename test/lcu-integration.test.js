@@ -1,40 +1,52 @@
+// Este script agora lida com sucesso e falha, garantindo que o processo sempre termine.
+// A principal mudança é parar o monitoramento assim que a primeira conexão for bem-sucedida.
+
 console.log('Iniciando script de teste de integração LCU...');
 
-// Importamos diretamente os serviços que precisamos para o teste
 const { watchLcu, stopLcuWatcher } = require('../src/services/lcu');
 const { createRankedLobbyAndSetRoles } = require('../src/services/lobbyController');
 
-/**
- * Função principal que controla o fluxo do teste.
- */
+// Flag para sabermos se o teste já foi iniciado e evitar execuções múltiplas
+let testHasStarted = false;
+
 async function runTests() {
   console.log('Aguardando conexão com o cliente do League of Legends...');
 
-  // A função de callback que será executada quando o LCU for encontrado.
   const onLcuConnect = async () => {
-    console.log('LCU detectado. Iniciando os testes em 3 segundos...');
-    
+    // Se o teste já foi acionado, ignora chamadas futuras.
+    if (testHasStarted) return;
+    testHasStarted = true;
+
+    // AQUI ESTÁ A MUDANÇA CRUCIAL:
+    // Paramos o monitoramento assim que temos a primeira conexão bem-sucedida.
+    // Isso evita o loop de conectar/desconectar enquanto o teste está esperando para ser executado.
+    stopLcuWatcher();
+    console.log('LCU detectado. Monitoramento parado. Iniciando os testes em 3 segundos...');
+
     await new Promise(resolve => setTimeout(resolve, 3000));
 
-    // Roda a função de teste que queremos validar
-    await createRankedLobbyAndSetRoles();
-    
-    console.log('\n--- Testes de integração finalizados ---');
-    
-    // Para o monitoramento e encerra o script com sucesso
-    stopLcuWatcher();
-    process.exit(0); 
+    try {
+      // Roda a função de teste que queremos validar
+      await createRankedLobbyAndSetRoles();
+      console.log('\n--- Testes de integração finalizados com SUCESSO ---');
+      process.exit(0); // Encerra com código 0 (sucesso)
+
+    } catch (error) {
+      console.error('\n--- Testes de integração finalizados com FALHA ---');
+      process.exit(1); // Encerra com código 1 (erro)
+    }
   };
 
-  // Inicia o monitoramento do LCU. Note que não passamos 'mainWindow', pois não temos uma janela neste script.
-  // O 'watchLcu' precisa ser ligeiramente ajustado para lidar com isso (ver abaixo).
   watchLcu(null, onLcuConnect);
 
   // Define um timeout. Se o LCU não for encontrado em 30 segundos, o teste falha.
   setTimeout(() => {
-    console.error('❌ TIMEOUT: Cliente do LoL não encontrado em 30 segundos. Encerrando teste.');
-    stopLcuWatcher();
-    process.exit(1); // Encerra o script com um código de erro.
+    // Só executa o timeout se o teste ainda não tiver começado
+    if (!testHasStarted) {
+        console.error('❌ TIMEOUT: Cliente do LoL não encontrado em 30 segundos. Encerrando teste.');
+        stopLcuWatcher();
+        process.exit(1); // Encerra o script com um código de erro.
+    }
   }, 30000);
 }
 

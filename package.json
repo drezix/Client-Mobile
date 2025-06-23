@@ -6,14 +6,16 @@
   "scripts": {
     "start": "electron .",
     "dev": "nodemon --exec electron .",
-    "test:lcu": "node test/lcu-integration.test.js"
+    "test:lcu": "node test/lcu-integration.test.js",
+    "test:spy": "node test/spy-events.test.js"
   },
   "author": "André Agostinis",
   "license": "ISC",
   "dependencies": {
     "axios": "^1.10.0",
     "express": "^5.1.0",
-    "https-proxy-agent": "^7.0.6"
+    "https-proxy-agent": "^7.0.6",
+    "ws": "^8.18.2"
   },
   "devDependencies": {
     "electron": "^36.5.0",
