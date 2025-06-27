@@ -1,11 +1,7 @@
-/*try {
-    require('electron-reloader')(module);
-  } catch (_) {}*/
-  
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const { watchLcu, stopLcuWatcher, getLcuData } = require('./services/lcu'); 
-const { startServer } = require('./services/server');
+const lcuConnector = require('./services/lcu'); 
+const { getServerInfo, startServer } = require('./services/server');
 const { startQueueFlow, leaveQueue, acceptMatch, declineMatch } = require('./services/lobbyController');
 const assetService = require('./services/lcuAssetService');
 
@@ -23,9 +19,9 @@ function createWindow() {
     resizable: false,
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'index.html')); 
-  // mainWindow.webContents.openDevTools(); 
+  mainWindow.loadFile(path.join(__dirname, 'index.html'));
 }
+
 
 app.whenReady().then(() => {
   createWindow();
@@ -37,40 +33,65 @@ app.whenReady().then(() => {
   });
 
   startServer(mainWindow);
-  watchLcu(mainWindow);
+  // --- MUDANÇA 2: Iniciar o monitoramento através do conector ---
+  lcuConnector.watch(mainWindow);
 });
 
 app.on('window-all-closed', () => {
-  stopLcuWatcher();
+  // --- MUDANÇA 3: Parar o monitoramento através do conector ---
+  lcuConnector.stop();
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-// --- Handlers de Comunicação ---
+// --- MUDANÇA 4: Handlers de Comunicação Atualizados ---
+
+// Este handler não muda aqui, mas o assetService precisa ser atualizado internamente
 ipcMain.handle('get-owned-champions', async () => {
   return await assetService.getOwnedChampions();
 });
+
+// Este handler também não muda aqui
 ipcMain.handle('get-rune-pages', async () => {
-  return await assetService.getRunePages();
+  // ATENÇÃO: Renomeei para getRunePages pois busca todas.
+  // Se quiser a página ativa, o endpoint é outro.
+  return await assetService.getRunePages(); 
 });
-ipcMain.handle('get-quick-play-settings', async () => {
-  return await assetService.getQuickPlaySettings();
-});
+
+// ESTE É O HANDLER QUE CAUSOU O ERRO
 ipcMain.handle('get-initial-lcu-status', () => {
   console.log('[IPC] Fornecendo status inicial do LCU para a UI.');
-  return getLcuData();
-});  
+  // Acessamos o status através de um método do nosso conector
+  return lcuConnector.getStatus(); 
+});
+
+// Os handlers de ação não mudam aqui, pois a lógica está encapsulada
+// no lobbyController. O lobbyController é que precisa ser atualizado.
 ipcMain.handle('invoke-start-queue', async (event, config) => {
   console.log("Recebido evento 'Iniciar Fila' com a configuração:", config);
-  await startQueueFlow(config);
+  try {
+    await startQueueFlow(config);
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error.response?.data?.message || error.message || 'Um erro desconhecido ocorreu.';
+    console.error(`[IPC] Falha ao iniciar fila:`, errorMessage);
+    return { success: false, error: errorMessage };
+  }
 });
+
 ipcMain.handle('invoke-leave-queue', async () => {
-  await leaveQueue();
+  return await leaveQueue();
 });
+
 ipcMain.handle('invoke-accept-match', async () => {
-  await acceptMatch();
+  return await acceptMatch();
 });
+
 ipcMain.handle('invoke-decline-match', async () => {
-  await declineMatch();
+  return await declineMatch();
+});
+
+ipcMain.handle('get-initial-server-status', () => {
+    return getServerInfo();
 });

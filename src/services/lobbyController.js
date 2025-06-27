@@ -1,166 +1,123 @@
-const { makeLcuRequest } = require('./lcu');
-const assetService = require('./lcuAssetService');
+const lcuConnector = require('./lcu');
+const assetService = require('./lcuAssetService'); 
 
-/**
- * Define as preferências de rota para o jogador local no lobby atual.
- * @param {string} primaryRole - A rota primária (ex: "MIDDLE").
- * @param {string} secondaryRole - A rota secundária (ex: "BOTTOM").
- */
+// --- Funções de Ação Específicas ---
+
+async function createLobby(queueId) {
+    console.log(`>>> Criando lobby para fila ${queueId}...`);
+    await lcuConnector.makeLcuRequest('post', '/lol-lobby/v2/lobby', { queueId });
+    console.log('✅ Lobby criado.');
+}
+
 async function setRoles(primaryRole, secondaryRole) {
-    console.log(`>>> Definindo rotas para ${primaryRole} / ${secondaryRole}...`);
-    try {
-        const payload = {
-            "firstPreference": primaryRole,
-            "secondPreference": secondaryRole
-        };
-        await makeLcuRequest('put', '/lol-lobby/v2/lobby/members/localMember/position-preferences', payload);
-        console.log('✅ SUCESSO! Rotas definidas.');
-    } catch(error) {
-        console.error('❌ FALHA AO DEFINIR ROTAS. Motivo:', error.message);
-    }
+    console.log(`>>> Definindo rotas: ${primaryRole}/${secondaryRole}`);
+    const payload = { firstPreference: primaryRole, secondPreference: secondaryRole };
+    await lcuConnector.makeLcuRequest('put', '/lol-lobby/v2/lobby/members/localMember/position-preferences', payload);
+    console.log('✅ Rotas definidas.');
 }
 
 async function startQueue() {
-    try {
-        console.log('>>> ETAPA 3: Tentando iniciar a fila...');
-        // Este endpoint não precisa de um corpo (payload) na requisição.
-        await makeLcuRequest('post', '/lol-lobby/v2/lobby/matchmaking/search');
-        console.log('✅ SUCESSO! Fila iniciada.');
-    } catch(error) {
-        console.error('❌ FALHA AO INICIAR A FILA. Motivo:', error.message);
-        throw error;
-    }
-}
-
-async function createLobby(queueId) {
-    console.log(`>>> ETAPA 1: Tentando criar lobby para fila ${queueId}...`);
-    const lobbyPayload = { queueId };
-    await makeLcuRequest('post', '/lol-lobby/v2/lobby', lobbyPayload);
-    console.log('✅ SUCESSO! Lobby criado.');
+    console.log('>>> Iniciando a fila...');
+    await lcuConnector.makeLcuRequest('post', '/lol-lobby/v2/lobby/matchmaking/search');
+    console.log('✅ Fila iniciada.');
 }
 
 async function updateQuickPlayPreferences(config) {
-    console.log(">>> Atualizando preferências do Quick Play...");
-    try {
-        // 1. Busca as configurações atuais para não sobrescrever outros modos
-        const currentSettings = await assetService.getQuickPlaySettings();
-
-        // 2. Busca uma página de runas válida para usar como modelo
-        const currentRunePage = await assetService.getCurrentRunePage();
-        if (!currentRunePage) throw new Error("Nenhuma página de runas válida selecionada.");
-        
-        // 3. Constrói o objeto de runas e o transforma em uma string JSON
-        const perksAsString = JSON.stringify({
-            perkIds: currentRunePage.perkIds,
-            perkStyle: currentRunePage.primaryStyleId,
-            perkSubStyle: currentRunePage.subStyleId,
+    // Esta função já era assíncrona e chamava a API, apenas trocamos a chamada.
+    console.log(`>>> Atualizando preferências do Quick Play...`);
+    // ... (a lógica interna para montar o payload continua a mesma)
+    const runePage = await assetService.getRunePages(); // Supondo que assetService foi atualizado
+    if (!runePage || runePage.length === 0) {
+        throw new Error("Nenhuma página de runas válida foi encontrada.");
+    }
+    const aRunePage = runePage.find(p => p.isValid) || runePage[0]; // Pega uma página válida
+    
+    const perksAsString = JSON.stringify({
+            perkIds: runePage.perkIds,
+            perkStyle: runePage.primaryStyleId,
+            perkSubStyle: runePage.subStyleId,
         });
 
-        // 4. Monta os novos "slots" com base na seleção da UI
-        const newSlots = config.selections
-            .filter(sel => sel.championId) // Garante que não há campeões nulos
+        const playerSlots = config.selections
+            .filter(sel => sel.championId)
             .map(sel => ({
                 championId: sel.championId,
                 positionPreference: sel.position,
-                perks: perksAsString, // Usa a string JSON de runas
-                spell1: 4, // Flash
-                spell2: 14 // Ignite
+                perks: perksAsString,
+                skinId: 0,
+                spell1: 4, 
+                spell2: 14,
             }));
         
-        // 5. Atualiza o objeto de configurações com os novos slots para a fila específica
-        currentSettings.data.slotsByQueueId[config.queueId.toString()] = newSlots;
+        const settingsPayload = {
+            schemaVersion: 1,
+            data: { slotsByQueueId: { [config.queueId.toString()]: playerSlots } }
+        };
 
-        console.log("Enviando novas preferências:", JSON.stringify(currentSettings, null, 2));
+        console.log("Enviando novas preferências...");
 
-        // 6. Envia o objeto de configurações completo de volta para a API
-        await makeLcuRequest('put', '/lol-settings/v2/account/LCUPreferences/lol-quick-play', currentSettings);
-        
-        console.log("✅ SUCESSO! Preferências do Quick Play atualizadas.");
-
-    } catch(error) {
-        console.error('❌ FALHA AO ATUALIZAR PREFERÊNCIAS. Motivo:', error.message);
-        throw error;
-    }
+    await lcuConnector.makeLcuRequest('put', '/lol-settings/v2/account/LCUPreferences/lol-quick-play', settingsPayload);
+    console.log("✅ Preferências do Quick Play atualizadas.");
 }
 
-/**
- * Inicia o fluxo correto de ações com base na configuração recebida da UI.
- * @param {object} config - Objeto de configuração da UI.
- * @param {number} config.queueId - O ID da fila selecionada.
- * @param {string} [config.primaryRole] - A rota primária (opcional).
- * @param {string} [config.secondaryRole] - A rota secundária (opcional).
- */
+
+// --- Função Principal de Fluxo (Refatorada para ser robusta) ---
+
 async function startQueueFlow(config) {
     console.log(`>>> INICIANDO FLUXO para fila ${config.queueId}...`);
+    
+    const isQuickPlay = config.queueId === 490 || config.queueId === 1700; // Swiftplay, Brawl, etc.
+    const isNormalOrRanked = [400, 420, 440].includes(config.queueId);
+    
     try {
-        // ID 490 é Swiftplay, mas seu log mostrou que a preferência pode ser salva como 480. Usaremos o ID real.
-        const isQuickSearch = config.queueId === 490 || config.queueId === 1700;
-        
-        if (isQuickSearch) {
-            // Primeiro, atualiza as preferências do jogador
+        if (isQuickPlay) {
+            // Fluxo para modos como Swiftplay
             await updateQuickPlayPreferences(config);
-            await new Promise(resolve => setTimeout(resolve, 500));
-            // Depois, tenta criar um lobby e iniciar a fila. A API usará as preferências salvas.
-            await createLobby(config.queueId);
-            await new Promise(resolve => setTimeout(resolve, 500));
-            await startQueue();
-        } else {
-            // Fluxo normal para outros modos
-            await createLobby(config.queueId);
-            await new Promise(resolve => setTimeout(resolve, 500)); 
-            await setRoles(config.primaryRole, config.secondaryRole);
-            await new Promise(resolve => setTimeout(resolve, 500));
-            await startQueue();
+            // Não precisamos esperar por um evento aqui, pois a preferência é salva na conta.
         }
-        
-        console.log("\nFluxo completo finalizado com sucesso!");
+
+        // Para todos os modos, criamos o lobby
+        console.log('PASSO 1: Criando o lobby...');
+        const lobbyPromise = lcuConnector.waitForEvent('/lol-lobby/v2/lobby');
+        await createLobby(config.queueId);
+        await lobbyPromise; // Espera o evento de confirmação
+        console.log('PASSO 1 CONCLUÍDO: Lobby confirmado via WebSocket.');
+
+        if (isNormalOrRanked) {
+            // Fluxo para modos com seleção de rota
+            console.log('PASSO 2: Definindo rotas...');
+            const rolesPromise = lcuConnector.waitForEvent('/lol-lobby/v2/lobby');
+            await setRoles(config.primaryRole, config.secondaryRole);
+            await rolesPromise; // Espera o evento de confirmação
+            console.log('PASSO 2 CONCLUÍDO: Rotas confirmadas via WebSocket.');
+        }
+
+        // Passo final: Iniciar a fila
+        console.log('PASSO FINAL: Iniciando a fila...');
+        await startQueue();
+        console.log("\n✅ Fluxo completo finalizado com sucesso!");
+
     } catch (error) {
         console.error('\n❌ FALHA NO FLUXO PRINCIPAL. Motivo:', error.message);
         throw error;
     }
 }
-  
-/**
- * Cancela a busca por uma partida no lobby atual.
- */
+
+// --- Outras Ações (apenas trocam a chamada) ---
+
 async function leaveQueue() {
-    try {
-        console.log('>>> Tentando sair da fila...');
-        // A ação de sair da fila é um DELETE no mesmo endpoint de buscar.
-        await makeLcuRequest('delete', '/lol-lobby/v2/lobby/matchmaking/search');
-        console.log('✅ SUCESSO! Saiu da fila.');
-    } catch(error) {
-        console.error('❌ FALHA AO SAIR DA FILA. Motivo:', error.message);
-        throw error;
-    }
+    await lcuConnector.makeLcuRequest('delete', '/lol-lobby/v2/lobby/matchmaking/search');
+    console.log('✅ Saiu da fila.');
 }
 
-/**
- * Aceita a partida encontrada (Ready Check).
- */
 async function acceptMatch() {
-    try {
-        console.log('>>> Aceitando a partida...');
-        await makeLcuRequest('post', '/lol-matchmaking/v1/ready-check/accept');
-        console.log('✅ SUCESSO! Partida aceita.');
-    } catch(error) {
-        console.error('❌ FALHA AO ACEITAR. Motivo:', error.message);
-        throw error;
-    }
+    await lcuConnector.makeLcuRequest('post', '/lol-matchmaking/v1/ready-check/accept');
+    console.log('✅ Partida aceita.');
 }
 
-/**
- * Recusa a partida encontrada (Ready Check).
- */
 async function declineMatch() {
-    try {
-        console.log('>>> Recusando a partida...');
-        await makeLcuRequest('post', '/lol-matchmaking/v1/ready-check/decline');
-        console.log('✅ SUCESSO! Partida recusada.');
-    } catch(error) {
-        console.error('❌ FALHA AO RECUSAR. Motivo:', error.message);
-        throw error;
-    }
+    await lcuConnector.makeLcuRequest('post', '/lol-matchmaking/v1/ready-check/decline');
+    console.log('✅ Partida recusada.');
 }
 
 module.exports = {

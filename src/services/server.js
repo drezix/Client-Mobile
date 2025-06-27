@@ -1,10 +1,10 @@
-
 const express = require('express');
 const os = require('os');
-const { makeLcuRequest } = require('./lcu');
+// CORREÇÃO: Importamos a instância do LCUConnector em vez das funções antigas.
+const lcuConnector = require('./lcu');
 
 const app = express();
-const PORT = 3000; // Porta que seu servidor irá rodar
+const PORT = 3000;
 
 let serverInstance = null;
 let serverInfo = {
@@ -17,7 +17,6 @@ function getLocalIp() {
     const interfaces = os.networkInterfaces();
     for (const name of Object.keys(interfaces)) {
         for (const net of interfaces[name]) {
-            // Pula endereços não-IPv4 e endereços internos (ex: 127.0.0.1)
             if (net.family === 'IPv4' && !net.internal) {
                 return net.address;
             }
@@ -26,7 +25,6 @@ function getLocalIp() {
     return '127.0.0.1'; // Fallback
 }
 
-// Inicia o servidor Express
 function startServer(win) {
     app.use(express.json());
 
@@ -34,14 +32,16 @@ function startServer(win) {
 
     // Rota de teste para verificar se o servidor está funcionando
     app.get('/status', (req, res) => {
-        res.json({ message: 'Servidor do LoL Controller está no ar!', lcu: getLcuData() });
+        // CORREÇÃO: Usamos o método getStatus() do conector.
+        res.json({ message: 'Servidor do LoL Controller está no ar!', lcu: lcuConnector.getStatus() });
     });
 
     // Rota para aceitar a partida
     app.post('/lol/accept-queue', async (req, res) => {
         try {
-            console.log('Recebido comando para aceitar a partida.');
-            const data = await makeLcuRequest('post', '/lol-matchmaking/v1/ready-check/accept');
+            console.log('Recebido comando via API para aceitar a partida.');
+            // CORREÇÃO: Usamos o método makeLcuRequest do conector.
+            const data = await lcuConnector.makeLcuRequest('post', '/lol-matchmaking/v1/ready-check/accept');
             res.status(200).json({ success: true, data });
         } catch (error) {
             res.status(500).json({ success: false, message: error.message });
@@ -49,25 +49,23 @@ function startServer(win) {
     });
     
     // Rota para selecionar e confirmar um campeão
-    // Exemplo de chamada do celular: POST /lol/pick-champion com body {"championId": 145, "actionId": 1}
     app.post('/lol/pick-champion', async (req, res) => {
         const { championId, actionId } = req.body;
-        if(!championId || !actionId) {
+        if (!championId || !actionId) {
             return res.status(400).json({ success: false, message: 'championId e actionId são necessários.' });
         }
 
         try {
-            console.log(`Recebido comando para pickar campeão ${championId} na ação ${actionId}`);
+            console.log(`Recebido comando via API para pickar campeão ${championId} na ação ${actionId}`);
             const endpoint = `/lol-champ-select/v1/session/actions/${actionId}`;
-            const body = { championId, completed: true }; // 'completed: true' confirma a escolha
-            const data = await makeLcuRequest('patch', endpoint, body);
+            const body = { championId, completed: true };
+            // CORREÇÃO: Usamos o método makeLcuRequest do conector.
+            const data = await lcuConnector.makeLcuRequest('patch', endpoint, body);
             res.status(200).json({ success: true, data });
         } catch(error) {
-             res.status(500).json({ success: false, message: error.message });
+            res.status(500).json({ success: false, message: error.message });
         }
     });
-
-    // Adicione mais rotas aqui (banir, selecionar skin, etc.)
 
     // Inicia o servidor e escuta na porta definida
     serverInstance = app.listen(PORT, '0.0.0.0', () => {

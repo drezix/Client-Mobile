@@ -10,7 +10,7 @@
                 "<node_internals>/**"
             ],
             // Garanta que esta linha aponta para o seu script
-            "program": "${workspaceFolder}/test/spy-events.test.js"
+            "program": "${workspaceFolder}/src/services/lobbyController.js"
         }
     ]
 }

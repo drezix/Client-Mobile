@@ -1,0 +1,85 @@
+<div class="card">
+    <h2>1. Selecione o Modo de Jogo</h2>
+    <div class="form-group">
+        <label for="game-mode-select">Modo:</label>
+        <select id="game-mode-select" class="custom-select" disabled>
+             <optgroup label="Summoner's Rift">
+                <option value="490" data-config-panel="swiftplay-config">Swiftplay</option>
+                <option value="400" data-config-panel="role-select-config">Normal Alternada</option>
+                <option value="420" data-config-panel="role-select-config">Ranqueada Solo/Duo</option>
+                <option value="440" data-config-panel="role-select-config">Ranqueada Flex</option>
+            </optgroup>
+            <optgroup label="Howling Abyss">
+                <option value="450" data-config-panel="aram-config">ARAM</option>
+            </optgroup>
+            <optgroup label="Modos de Jogo Rotativos">
+                <option value="1700" data-config-panel="brawl-config">Brawl</option>
+            </optgroup>
+        </select>
+    </div>
+    
+    <hr class="divider">
+
+    <!-- Painel de Configuração para Modos com Seleção de Rota -->
+    <div id="role-select-config" class="config-panel">
+        <h2>2. Configure as Rotas</h2>
+        <div class="form-container">
+            <div class="form-group">
+                <label for="primary-role-select">Rota Primária:</label>
+                <select id="primary-role-select" class="custom-select">
+                    <option value="TOP">Topo</option>
+                    <option value="JUNGLE">Selva</option>
+                    <option value="MIDDLE">Meio</option>
+                    <option value="BOTTOM">Atirador</option>
+                    <option value="UTILITY">Suporte</option>
+                    <option value="FILL">Preencher</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="secondary-role-select">Rota Secundária:</label>
+                <select id="secondary-role-select" class="custom-select">
+                    <option value="TOP">Topo</option>
+                    <option value="JUNGLE">Selva</option>
+                    <option value="MIDDLE">Meio</option>
+                    <option value="BOTTOM">Atirador</option>
+                    <option value="UTILITY">Suporte</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Painel de Configuração para ARAM -->
+    <div id="aram-config" class="config-panel" style="display: none;">
+        <p>Nenhuma configuração necessária para ARAM.</p>
+    </div>
+
+    <!-- Painel de Configuração para Swiftplay -->
+    <div id="swiftplay-config" class="config-panel" style="display: none;">
+        <h2>2. Configure as Seleções</h2>
+        <div class="champion-selection-group">
+            <h3>Primeira Opção</h3>
+            <div class="form-container">
+                <div class="form-group"><label>Campeão:</label><select id="swiftplay-champ-1" class="custom-select champion-select"></select></div>
+                <div class="form-group"><label>Rota:</label><select id="swiftplay-pos-1" class="custom-select position-select"><option value="TOP">Topo</option><option value="JUNGLE">Selva</option><option value="MIDDLE">Meio</option><option value="BOTTOM">Atirador</option><option value="UTILITY">Suporte</option></select></div>
+            </div>
+        </div>
+        <div class="champion-selection-group">
+            <h3>Segunda Opção</h3>
+            <div class="form-container">
+                <div class="form-group"><label>Campeão:</label><select id="swiftplay-champ-2" class="custom-select champion-select"></select></div>
+                <div class="form-group"><label>Rota:</label><select id="swiftplay-pos-2" class="custom-select position-select"><option value="TOP">Topo</option><option value="JUNGLE">Selva</option><option value="MIDDLE">Meio</option><option value="BOTTOM">Atirador</option><option value="UTILITY">Suporte</option></select></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Painel de Configuração para Brawl -->
+    <div id="brawl-config" class="config-panel" style="display: none;">
+        <h2>2. Configure sua Seleção</h2>
+        <div class="form-group"><label>Campeão:</label><select id="brawl-champ-1" class="custom-select champion-select"></select></div>
+    </div>
+    
+    <hr class="divider">
+    
+    <button id="start-queue-btn" class="action-btn" disabled>Iniciar Fila</button>
+    <button id="leave-queue-btn" class="action-btn leave" style="display: none;">Sair da Fila</button>
+</div>
